@@ -1,0 +1,72 @@
+# 每天 00:00 和 12:00（北京时间）把两个私有仓库的完整 git 历史
+# 打成 git bundle，gzip 压缩后上传到 https://your-webdav.example.com/dav/backups/
+# 文件名：<repo>-YYYYMMDD-HHMM.bundle.gz（带小时，区分一天两次）
+#
+# 注意：按用户要求，旧备份永不删除，只增不减。
+#
+# 为什么包一层 gzip：你的 WebDAV 服务（原作者的跑在图床服务上，PUT 小文件可能被拒，包一层 gzip 更稳），
+# WebDAV PUT 会被转交它的 /upload，走 HuggingFace 渠道。
+# HF 按扩展名+文件头判断：小二进制文件若被误判成文本会走直接提交，
+# 然后被 HF 以 "contains binary files" 拒掉（500）。
+# .gz 是公认的二进制扩展名，能稳定走 LFS 通道。恢复时 gunzip 即可。
+#
+# 需要在仓库 Settings -> Secrets and variables -> Actions 里加：
+#   BACKUP_PAT   - classic PAT（repo scope），用来 clone 两个私有仓库
+#   WEBDAV_USER  - your-webdav.example.com/dav 的账号
+#   WEBDAV_PASS  - your-webdav.example.com/dav 的密码
+
+name: repo-backup
+
+on:
+  schedule:
+    - cron: "0 4,16 * * *" # 每天 12:00 / 00:00（北京时间，UTC+8）
+  workflow_dispatch: # 允许在 Actions 页面手动点 Run workflow 立即跑一次
+
+concurrency:
+  group: repo-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false # 两个仓库互相独立，一个失败不取消另一个
+      max-parallel: 1 # 串行上传，避免服务器并发 PUT 出怪问题
+      matrix:
+        repo: [AstroPages, Blog-APK]
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          repository: your-username/${{ matrix.repo }}
+          token: ${{ secrets.BACKUP_PAT }}
+          fetch-depth: 0 # 完整历史：所有分支、标签、全部提交
+          path: repo
+
+      - name: Create git bundle
+        run: |
+          cd repo
+          TS=$(TZ=Asia/Shanghai date +"%Y%m%d-%H%M")
+          echo "TS=$TS" >> "$GITHUB_ENV"
+          FILE="${{ matrix.repo }}-${TS}.bundle"
+          git bundle create "../$FILE" --all
+          git bundle verify "../$FILE"
+          # 包一层 gzip：见文件头注释（HF 渠道对裸 .bundle 会误判文本而拒收）
+          gzip -c "../$FILE" > "../$FILE.gz"
+          ls -lh "../$FILE.gz"
+
+      - name: Upload to WebDAV
+        run: |
+          FILE="${{ matrix.repo }}-${TS}.bundle.gz"
+          code=$(curl -s -m 600 -u "${{ secrets.WEBDAV_USER }}:${{ secrets.WEBDAV_PASS }}" \
+            -T "$FILE" -w "%{http_code}" -o /tmp/dav.out \
+            "https://your-webdav.example.com/dav/backups/$FILE")
+          echo "HTTP $code"
+          cat /tmp/dav.out; echo
+          if [ "$code" != "200" ] && [ "$code" != "201" ] && [ "$code" != "204" ]; then
+            echo "webdav upload failed with HTTP $code"
+            exit 1
+          fi
+          echo "uploaded $FILE"
