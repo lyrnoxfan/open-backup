@@ -1,0 +1,10 @@
+name = "auto-backup"
+main = "src/index.js"
+compatibility_date = "2026-10-04"
+
+[triggers]
+crons = ["0 18 * * *"]  # 每天 02:00（北京时间，UTC+8）
+
+[vars]
+WEBDAV_USER = "lyrnox"
+KEEP = "4"
