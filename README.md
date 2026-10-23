@@ -5,30 +5,30 @@ GitHub Actions 定时备份：每天两次把指定仓库的完整 git 历史打
 ## 工作原理
 
 ```
-定时触发（cron）→ git clone 完整历史 → git bundle create --all
-  → gzip → curl PUT 到 WebDAV
+定时触发（cron）→ 校验必填配置 → clone 完整历史 → git bundle（全部分支 + 标签）
+  → gzip → PUT 到 WebDAV（检查 HTTP 状态）→ 立刻下载回来
+  → 校验 sha256 → git bundle verify → 恢复成镜像仓库并逐个比对分支/标签 SHA
 ```
 
-- 备份文件：`<repo>-YYYYMMDD-HHMM.bundle.gz`
+- 备份文件：`<repo>-YYYYMMDD-HHMM.bundle.gz`，旁边附 `.manifest.json`（源仓库、HEAD 提交 SHA、全部 ref、文件 sha256）
+- 任何一步失败（上传非 2xx、回读不一致、恢复后 ref 对不上）都会让对应仓库的任务失败，不会"假绿"
 - 恢复：`gunzip` 后 `git clone <file>.bundle`
-- 包一层 gzip 的原因：某些 WebDAV 服务对纯文本小文件 PUT 不友好，gzip 后最稳
+- 包一层 gzip 的原因：某些 WebDAV 服务对小的裸二进制 PUT 不友好，gzip 后最稳
 
 ## 快速开始
 
 1. Fork 本仓库。
-2. 在仓库 Settings → Secrets 里加：
-   - `BACKUP_PAT`：有 `repo` 权限的 PAT（用来 clone 私有仓库）
-   - `WEBDAV_USER` / `WEBDAV_PASS`：你的 WebDAV 账号密码
-3. 改 `.github/workflows/backup.yml`：
-   - 备份的仓库列表
-   - WebDAV 上传地址（默认 `https://your-webdav.example.com/dav/backups/`）
-   - 定时 cron（默认北京时间 00:00 / 12:00）
+2. Settings → Secrets and variables → Actions：
+   - **Variables**
+     - `BACKUP_SOURCE_OWNER`：被备份仓库的所有者（用户名或组织）
+     - `WEBDAV_URL`：上传目录，必须是 `https://`，如 `https://dav.your-domain/dav/backups`
+   - **Secrets**
+     - `BACKUP_PAT`：有 `repo` 读权限的 PAT（clone 私有仓库）
+     - `WEBDAV_USER` / `WEBDAV_PASS`：WebDAV 账号密码
+3. 在 `.github/workflows/backup.yml` 的 `matrix.repo` 里改要备份的仓库名，按需改 cron。
+4. Actions 页面手动 Run workflow 跑一次，确认每个仓库都走完"上传 + 回读恢复"。
 
-```yaml
-# .github/workflows/backup.yml
-REPOS="your-username/repo-a your-username/repo-b"
-DAV_URL="https://your-webdav.example.com/dav/backups"
-```
+缺任何一项配置，或仍是示例值（`your-username`、`example.com`），工作流会在第一步直接报错。
 
 ## 另外一个方案
 
