@@ -12,7 +12,8 @@
 #     BACKUP_SOURCE_OWNER  被备份仓库的所有者（用户名或组织），例如 octocat
 #     WEBDAV_URL           上传目录，例如 https://dav.your-domain/dav/backups
 #   Secrets:
-#     BACKUP_PAT           有 repo 读权限的 PAT，用来 clone 私有仓库
+#     BACKUP_SSH_KEY_ASTROPAGES  AstroPages 只读 deploy key 的私钥（ed25519）
+#     BACKUP_SSH_KEY_BLOGAPK     Blog-APK 只读 deploy key 的私钥（ed25519）
 #     WEBDAV_USER          WebDAV 用户名
 #     WEBDAV_PASS          WebDAV 密码
 # 缺任何一项、或仍是示例值（your-username / example.com），工作流直接失败。
@@ -49,7 +50,8 @@ jobs:
     steps:
       - name: Validate configuration
         env:
-          BACKUP_PAT: ${{ secrets.BACKUP_PAT }}
+          BACKUP_SSH_KEY_ASTROPAGES: ${{ secrets.BACKUP_SSH_KEY_ASTROPAGES }}
+          BACKUP_SSH_KEY_BLOGAPK: ${{ secrets.BACKUP_SSH_KEY_BLOGAPK }}
           WEBDAV_USER: ${{ secrets.WEBDAV_USER }}
           WEBDAV_PASS: ${{ secrets.WEBDAV_PASS }}
         run: |
@@ -65,7 +67,8 @@ jobs:
           }
           need BACKUP_SOURCE_OWNER "$SOURCE_OWNER"
           need WEBDAV_URL "$WEBDAV_URL"
-          need BACKUP_PAT "$BACKUP_PAT"
+          need BACKUP_SSH_KEY_ASTROPAGES "$BACKUP_SSH_KEY_ASTROPAGES"
+          need BACKUP_SSH_KEY_BLOGAPK "$BACKUP_SSH_KEY_BLOGAPK"
           need WEBDAV_USER "$WEBDAV_USER"
           need WEBDAV_PASS "$WEBDAV_PASS"
           case "$WEBDAV_URL" in
@@ -79,7 +82,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ vars.BACKUP_SOURCE_OWNER }}/${{ matrix.repo }}
-          token: ${{ secrets.BACKUP_PAT }}
+          ssh-key: ${{ matrix.repo == 'AstroPages' && secrets.BACKUP_SSH_KEY_ASTROPAGES || secrets.BACKUP_SSH_KEY_BLOGAPK }}
           fetch-depth: 0 # 完整历史：所有分支、标签、全部提交
           path: repo
           persist-credentials: false
