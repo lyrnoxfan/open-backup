@@ -1,4 +1,4 @@
-# 每天 00:00 和 12:00（北京时间）把指定仓库的完整 git 历史打成 git bundle，
+# 每天 00:00（北京时间）把指定仓库的完整 git 历史打成 git bundle，
 # gzip 压缩后上传到 WebDAV。上传返回 2xx 即算成功，不再做回读校验
 # （2026-11-25 移除 Download and restore test：WebDAV 上传走 HuggingFace 渠道，
 #  回读拿到的是传播延迟中的错字节，sha256 对不上，校验一直抖；manifest 仍随包上传，备以后手动核对）。
@@ -23,7 +23,7 @@ name: repo-backup
 
 on:
   schedule:
-    - cron: "0 4,16 * * *" # 每天 12:00 / 00:00（北京时间，UTC+8）
+    - cron: "0 16 * * *" # 每天 00:00（北京时间，UTC+8）
   workflow_dispatch:
 
 permissions:
